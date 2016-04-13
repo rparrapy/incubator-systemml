@@ -198,6 +198,8 @@ public abstract class Hop
 			_etypeForced = ExecType.MR;
 		else if ( DMLScript.rtplatform == RUNTIME_PLATFORM.SPARK )
 			_etypeForced = ExecType.SPARK;
+		else if ( DMLScript.rtplatform == RUNTIME_PLATFORM.FLINK )
+			_etypeForced = ExecType.FLINK;
 	}
 	
 	public void checkAndSetInvalidCPDimsAndSize()
@@ -225,6 +227,8 @@ public abstract class Hop
 					_etype = ExecType.MR;
 				else if( DMLScript.rtplatform == RUNTIME_PLATFORM.HYBRID_SPARK )
 					_etype = ExecType.SPARK;
+				else if( DMLScript.rtplatform == RUNTIME_PLATFORM.HYBRID_FLINK)
+					_etype = ExecType.FLINK;
 			}
 		}
 	}
@@ -293,7 +297,7 @@ public abstract class Hop
 		if( DMLScript.rtplatform != RUNTIME_PLATFORM.SINGLE_NODE 
 			&& !(getDataType()==DataType.SCALAR) )
 		{
-			et = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
+			et = OptimizerUtils.getRemoteExecType();
 		}
 
 		//add reblock lop to output if required
@@ -332,8 +336,7 @@ public abstract class Hop
 	{
 		//determine execution type
 		ExecType et = ExecType.CP;
-		if( OptimizerUtils.isSparkExecutionMode() 
-			&& getDataType()!=DataType.SCALAR )
+		if (OptimizerUtils.isSparkExecutionMode() && getDataType() != DataType.SCALAR)
 		{
 			//conditional checkpoint based on memory estimate in order to 
 			//(1) avoid unnecessary persist and unpersist calls, and 
@@ -776,6 +779,8 @@ public abstract class Hop
 				et = ExecType.MR;
 			else if( DMLScript.rtplatform == DMLScript.RUNTIME_PLATFORM.HYBRID_SPARK )
 				et = ExecType.SPARK;
+			else if( DMLScript.rtplatform == DMLScript.RUNTIME_PLATFORM.HYBRID_FLINK )
+				et = ExecType.FLINK;
 			
 			c = '*';
 		}
@@ -936,8 +941,9 @@ public abstract class Hop
 		if( et == null || getExecType() == et || getExecType()==null )
 			_requiresRecompile = false;
 		
-		setVisited();
+		this.setVisited();
 	}
+	
 
 	public long getDim1() {
 		return _dim1;

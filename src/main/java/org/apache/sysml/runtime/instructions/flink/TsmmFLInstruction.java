@@ -71,7 +71,7 @@ public class TsmmFLInstruction extends UnaryFLInstruction {
 
 		//put output block into symbol table (no lineage because single block)
 		//this also includes implicit maintenance of matrix characteristics
-		fec.setMatrixOutput(output.getName(), out);
+		fec.setMatrixOutput(output.getName(), out, getExtendedOpcode());
 	}
 
 	private static class DataSetTSMMFunction implements MapFunction<Tuple2<MatrixIndexes, MatrixBlock>, MatrixBlock> {

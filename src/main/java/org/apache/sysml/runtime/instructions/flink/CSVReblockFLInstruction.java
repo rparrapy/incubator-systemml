@@ -104,7 +104,7 @@ public class CSVReblockFLInstruction extends UnaryFLInstruction {
 
 		//check for in-memory reblock
 		if (Recompiler.checkCPReblock(flec, input1.getName())) {
-			Recompiler.executeInMemoryReblock(flec, input1.getName(), output.getName());
+			Recompiler.executeInMemoryMatrixReblock(flec, input1.getName(), output.getName());
 			return;
 		}
 

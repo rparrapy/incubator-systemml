@@ -135,7 +135,7 @@ public class MapmmFLInstruction extends BinaryFLInstruction {
 
 			//put output block into symbol table (no lineage because single block)
 			//this also includes implicit maintenance of matrix characteristics
-			flec.setMatrixOutput(output.getName(), out2);
+			flec.setMatrixOutput(output.getName(), out2, getExtendedOpcode());
 		} else //MULTI_BLOCK or NONE
 		{
 			if (_aggtype == SparkAggType.MULTI_BLOCK) {

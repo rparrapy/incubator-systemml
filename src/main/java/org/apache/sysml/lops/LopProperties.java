@@ -39,7 +39,7 @@ public class LopProperties
 	 * </ul>
 	 *
 	 */
-	public enum ExecType { CP, CP_FILE, MR, SPARK, GPU, INVALID };
+	public enum ExecType { CP, CP_FILE, MR, SPARK, FLINK, GPU, INVALID };
 	public enum ExecLocation {INVALID, RecordReader, Map, MapOrReduce, MapAndReduce, Reduce, Data, ControlProgram };
 
 	// static variable to assign an unique ID to every lop that is created

@@ -30,6 +30,7 @@ import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
+import org.apache.sysml.runtime.instructions.flink.data.DataSetObject;
 import org.apache.sysml.runtime.instructions.spark.data.RDDObject;
 import org.apache.sysml.runtime.io.FrameReader;
 import org.apache.sysml.runtime.io.FrameReaderFactory;
@@ -72,16 +73,16 @@ public class FrameObject extends CacheableData<FrameBlock>
 		setMetaData(meta);
 		setSchema(schema);
 	}
-	
+
 	/**
 	 * Copy constructor that copies meta data but NO data.
-	 * 
+	 *
 	 * @param fo frame object
 	 */
 	public FrameObject(FrameObject fo) {
 		super(fo);
 	}
-	
+
 	@Override
 	public ValueType[] getSchema() {
 		return _schema;
@@ -89,7 +90,7 @@ public class FrameObject extends CacheableData<FrameBlock>
 
 	/**
 	 * Obtain schema of value types
-	 * 
+	 *
 	 * @param cl column lower bound, inclusive
 	 * @param cu column upper bound, inclusive
 	 * @return schema of value types
@@ -102,16 +103,16 @@ public class FrameObject extends CacheableData<FrameBlock>
 	/**
 	 * Creates a new collection which contains the schema of the current
 	 * frame object concatenated with the schema of the passed frame object.
-	 * 
+	 *
 	 * @param fo frame object
 	 * @return schema of value types
 	 */
 	public ValueType[] mergeSchemas(FrameObject fo) {
 		return (ValueType[]) ArrayUtils.addAll(
-			(_schema!=null) ? _schema : UtilFunctions.nCopies((int)getNumColumns(), ValueType.STRING), 
+			(_schema!=null) ? _schema : UtilFunctions.nCopies((int)getNumColumns(), ValueType.STRING),
 			(fo._schema!=null) ? fo._schema : UtilFunctions.nCopies((int)fo.getNumColumns(), ValueType.STRING));
-	} 
-	
+	}
+
 	public void setSchema(String schema) {
 		if( schema.equals("*") ) {
 			//populate default schema
@@ -127,23 +128,23 @@ public class FrameObject extends CacheableData<FrameBlock>
 				_schema[i] = ValueType.valueOf(parts[i].toUpperCase());
 		}
 	}
-	
+
 	public void setSchema(ValueType[] schema) {
 		_schema = schema;
 	}
-		
+
 	@Override
-	public void refreshMetaData() 
+	public void refreshMetaData()
 		throws CacheException
 	{
 		if ( _data == null || _metaData ==null ) //refresh only for existing data
-			throw new CacheException("Cannot refresh meta data because there is no data or meta data. "); 
+			throw new CacheException("Cannot refresh meta data because there is no data or meta data. ");
 
 		//update matrix characteristics
 		MatrixCharacteristics mc = ((MatrixDimensionsMetaData) _metaData).getMatrixCharacteristics();
 		mc.setDimension( _data.getNumRows(),_data.getNumColumns() );
 		mc.setNonZeros(_data.getNumRows()*_data.getNumColumns());
-		
+
 		//update schema information
 		_schema = _data.getSchema();
 	}
@@ -157,7 +158,7 @@ public class FrameObject extends CacheableData<FrameBlock>
 		MatrixCharacteristics mc = getMatrixCharacteristics();
 		return mc.getCols();
 	}
-	
+
 	@Override
 	protected FrameBlock readBlobFromCache(String fname) throws IOException {
 		return (FrameBlock)LazyWriteBuffer.readBlock(fname, false);
@@ -165,35 +166,35 @@ public class FrameObject extends CacheableData<FrameBlock>
 
 	@Override
 	protected FrameBlock readBlobFromHDFS(String fname, long rlen, long clen)
-		throws IOException 
+		throws IOException
 	{
 		MatrixFormatMetaData iimd = (MatrixFormatMetaData) _metaData;
 		MatrixCharacteristics mc = iimd.getMatrixCharacteristics();
-		
+
 		//handle missing schema if necessary
-		ValueType[] lschema = (_schema!=null) ? _schema : 
+		ValueType[] lschema = (_schema!=null) ? _schema :
 			UtilFunctions.nCopies(clen>=1 ? (int)clen : 1, ValueType.STRING);
-		
+
 		//read the frame block
 		FrameBlock data = null;
 		try {
 			FrameReader reader = FrameReaderFactory.createFrameReader(iimd.getInputInfo(), getFileFormatProperties());
-			data = reader.readFrameFromHDFS(fname, lschema, mc.getRows(), mc.getCols()); 
+			data = reader.readFrameFromHDFS(fname, lschema, mc.getRows(), mc.getCols());
 		}
 		catch( DMLRuntimeException ex ) {
 			throw new IOException(ex);
 		}
-			
+
 		//sanity check correct output
 		if( data == null )
 			throw new IOException("Unable to load frame from file: "+fname);
-						
+
 		return data;
 	}
 
 	@Override
 	protected FrameBlock readBlobFromRDD(RDDObject rdd, MutableBoolean status)
-			throws IOException 
+			throws IOException
 	{
 		//note: the read of a frame block from an RDD might trigger
 		//lazy evaluation of pending transformations.
@@ -201,41 +202,49 @@ public class FrameObject extends CacheableData<FrameBlock>
 
 		//prepare return status (by default only collect)
 		status.setValue(false);
-		
+
 		MatrixFormatMetaData iimd = (MatrixFormatMetaData) _metaData;
 		MatrixCharacteristics mc = iimd.getMatrixCharacteristics();
 		int rlen = (int)mc.getRows();
 		int clen = (int)mc.getCols();
-		
+
 		//handle missing schema if necessary
-		ValueType[] lschema = (_schema!=null) ? _schema : 
+		ValueType[] lschema = (_schema!=null) ? _schema :
 			UtilFunctions.nCopies(clen>=1 ? (int)clen : 1, ValueType.STRING);
-		
+
 		FrameBlock fb = null;
 		try  {
 			//prevent unnecessary collect through rdd checkpoint
 			if( rdd.allowsShortCircuitCollect() ) {
 				lrdd = (RDDObject)rdd.getLineageChilds().get(0);
 			}
-			
+
 			//collect frame block from binary block RDD
-			fb = SparkExecutionContext.toFrameBlock(lrdd, lschema, rlen, clen);	
+			fb = SparkExecutionContext.toFrameBlock(lrdd, lschema, rlen, clen);
 		}
 		catch(DMLRuntimeException ex) {
 			throw new IOException(ex);
 		}
-				
+
 		//sanity check correct output
 		if( fb == null ) {
 			throw new IOException("Unable to load frame from rdd: "+lrdd.getVarName());
 		}
-		
+
 		return fb;
 	}
 
 	@Override
-	protected void writeBlobToHDFS(String fname, String ofmt, int rep, FileFormatProperties fprop) 
-		throws IOException, DMLRuntimeException 
+	protected FrameBlock readBlobFromDataSet(DataSetObject dso, MutableBoolean status)
+			throws IOException
+	{
+		//TODO support for distributed frame representations
+		throw new IOException("Not implemented yet.");
+	}
+
+	@Override
+	protected void writeBlobToHDFS(String fname, String ofmt, int rep, FileFormatProperties fprop)
+		throws IOException, DMLRuntimeException
 	{
 		OutputInfo oinfo = OutputInfo.stringToOutputInfo(ofmt);
 		FrameWriter writer = FrameWriterFactory.createFrameWriter(oinfo, fprop);
@@ -243,17 +252,24 @@ public class FrameObject extends CacheableData<FrameBlock>
 	}
 
 	@Override
-	protected void writeBlobFromRDDtoHDFS(RDDObject rdd, String fname, String ofmt) 
-		throws IOException, DMLRuntimeException 
+	protected void writeBlobFromRDDtoHDFS(RDDObject rdd, String fname, String ofmt)
+		throws IOException, DMLRuntimeException
 	{
 		//prepare output info
 		MatrixFormatMetaData iimd = (MatrixFormatMetaData) _metaData;
-		OutputInfo oinfo = (ofmt != null ? OutputInfo.stringToOutputInfo (ofmt ) 
+		OutputInfo oinfo = (ofmt != null ? OutputInfo.stringToOutputInfo (ofmt )
 				: InputInfo.getMatchingOutputInfo (iimd.getInputInfo ()));
-	    
+
 		//note: the write of an RDD to HDFS might trigger
-		//lazy evaluation of pending transformations.				
-		SparkExecutionContext.writeFrameRDDtoHDFS(rdd, fname, oinfo);	
+		//lazy evaluation of pending transformations.
+		SparkExecutionContext.writeFrameRDDtoHDFS(rdd, fname, oinfo);
 	}
 
+	@Override
+    protected void writeBlobFromDataSetToHDFS(DataSetObject dso, String fname, String ofmt)
+            throws IOException, DMLRuntimeException
+    {
+        //TODO support for distributed frame representations
+        throw new IOException("Not implemented yet.");
+    }
 }

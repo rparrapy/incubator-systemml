@@ -91,7 +91,7 @@ public class ReblockFLInstruction extends UnaryFLInstruction {
 
 		//check for in-memory reblock (w/ lazy spark context, potential for latency reduction)
 		if (Recompiler.checkCPReblock(flec, input1.getName())) {
-			Recompiler.executeInMemoryReblock(flec, input1.getName(), output.getName());
+			Recompiler.executeInMemoryMatrixReblock(flec, input1.getName(), output.getName());
 			return;
 		}
 

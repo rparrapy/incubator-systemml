@@ -31,11 +31,13 @@ import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 public abstract class Instruction 
 {
 	public enum INSTRUCTION_TYPE { 
-		CONTROL_PROGRAM,
-		MAPREDUCE,
-		MAPREDUCE_JOB,
-		BREAKPOINT,
+		CONTROL_PROGRAM, 
+		MAPREDUCE, 
+		EXTERNAL_LIBRARY, 
+		MAPREDUCE_JOB, 
+		BREAKPOINT, 
 		SPARK,
+		FLINK,
 		GPU
 	};
 	
@@ -47,6 +49,7 @@ public abstract class Instruction
 	public static final String LITERAL_PREFIX = Lop.LITERAL_PREFIX;
 	public static final String INSTRUCTION_DELIM = Lop.INSTRUCTION_DELIMITOR;
 	public static final String SP_INST_PREFIX = "sp_";
+	public static final String FL_INST_PREFIX = "fl_";
 	public static final String GPU_INST_PREFIX = "gpu_";
 	
 	//basic instruction meta data

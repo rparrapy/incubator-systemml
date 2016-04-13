@@ -32,8 +32,8 @@ public class DataSetObject extends LineageObject {
 	private String _hdfsFname = null;     //hdfs filename, if created from hdfs.
 
 	public DataSetObject(DataSet<?> dsvar, String varName) {
+		super(varName);
 		_dsHandle = dsvar;
-		_varName = varName;
 	}
 
 	public DataSet<?> getDataSet() {

@@ -71,6 +71,7 @@ import org.apache.sysml.runtime.controlprogram.parfor.stat.InfrastructureAnalyze
 import org.apache.sysml.runtime.instructions.Instruction;
 import org.apache.sysml.runtime.instructions.MRJobInstruction;
 import org.apache.sysml.runtime.instructions.cp.CPInstruction;
+import org.apache.sysml.runtime.instructions.flink.FLInstruction;
 import org.apache.sysml.runtime.instructions.gpu.GPUInstruction;
 import org.apache.sysml.runtime.instructions.spark.CSVReblockSPInstruction;
 import org.apache.sysml.runtime.instructions.spark.ReblockSPInstruction;
@@ -1179,7 +1180,7 @@ public class Explain
 		String tmp = null;
 		if( inst instanceof MRJobInstruction )
 			tmp = explainMRJobInstruction((MRJobInstruction)inst, level+1);
-		else if ( inst instanceof SPInstruction || inst instanceof CPInstruction || inst instanceof GPUInstruction)
+		else if ( inst instanceof SPInstruction || inst instanceof CPInstruction || inst instanceof FLInstruction || inst instanceof GPUInstruction)
 			tmp = inst.toString();
 		
 		if( REPLACE_SPECIAL_CHARACTERS ){

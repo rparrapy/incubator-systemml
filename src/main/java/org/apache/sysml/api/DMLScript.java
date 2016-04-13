@@ -81,6 +81,7 @@ import org.apache.sysml.runtime.controlprogram.caching.CacheStatistics;
 import org.apache.sysml.runtime.controlprogram.caching.CacheableData;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContextFactory;
+import org.apache.sysml.runtime.controlprogram.context.FlinkExecutionContext;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
 import org.apache.sysml.runtime.controlprogram.parfor.ProgramConverter;
 import org.apache.sysml.runtime.controlprogram.parfor.stat.InfrastructureAnalyzer;
@@ -106,8 +107,10 @@ public class DMLScript
 		HADOOP, 	    // execute all matrix operations in MR
 		SINGLE_NODE,    // execute all matrix operations in CP
 		HYBRID,         // execute matrix operations in CP or MR
-		HYBRID_SPARK,   // execute matrix operations in CP or Spark
-		SPARK			// execute matrix operations in Spark
+		HYBRID_SPARK,   // execute matrix operations in CP or Spark   
+		SPARK,			// execute matrix operations in Spark
+		FLINK,
+		HYBRID_FLINK
 	}
 
 	/**
@@ -274,6 +277,8 @@ public class DMLScript
 				else if (execMode.equalsIgnoreCase("hybrid")) dmlOptions.execMode = RUNTIME_PLATFORM.HYBRID;
 				else if (execMode.equalsIgnoreCase("hybrid_spark")) dmlOptions.execMode = RUNTIME_PLATFORM.HYBRID_SPARK;
 				else if (execMode.equalsIgnoreCase("spark")) dmlOptions.execMode = RUNTIME_PLATFORM.SPARK;
+				else if (execMode.equalsIgnoreCase("flink")) dmlOptions.execMode = RUNTIME_PLATFORM.FLINK;
+				else if (execMode.equalsIgnoreCase("hybrid_flink")) dmlOptions.execMode = RUNTIME_PLATFORM.HYBRID_FLINK;
 				else throw new org.apache.commons.cli.ParseException("Invalid argument specified for -exec option, must be one of [hadoop, singlenode, hybrid, hybrid_spark, spark]");
 			}
 		}
@@ -740,6 +745,10 @@ public class DMLScript
 		try {
 			ec = ExecutionContextFactory.createContext(rtprog);
 			ScriptExecutorUtils.executeRuntimeProgram(rtprog, ec, dmlconf, STATISTICS ? STATISTICS_COUNT : 0);
+			if (ec instanceof FlinkExecutionContext) {
+				((FlinkExecutionContext) ec).execute();
+
+			}
 		}
 		finally {
 			if(ec != null && ec instanceof SparkExecutionContext)

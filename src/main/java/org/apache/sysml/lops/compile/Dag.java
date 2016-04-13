@@ -65,8 +65,7 @@ import org.apache.sysml.parser.StatementBlock;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.parfor.ProgramConverter;
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence;
-import org.apache.sysml.runtime.instructions.CPInstructionParser;
-import org.apache.sysml.runtime.instructions.Instruction;
+import org.apache.sysml.runtime.instructions.*;
 import org.apache.sysml.runtime.instructions.Instruction.INSTRUCTION_TYPE;
 import org.apache.sysml.runtime.instructions.InstructionParser;
 import org.apache.sysml.runtime.instructions.MRJobInstruction;
@@ -1240,7 +1239,7 @@ public class Dag<N extends Lop>
 	private static void excludeRemoveInstruction(String varName, ArrayList<Instruction> deleteInst) {
 		for(int i=0; i < deleteInst.size(); i++) {
 			Instruction inst = deleteInst.get(i);
-			if ((inst.getType() == INSTRUCTION_TYPE.CONTROL_PROGRAM  || inst.getType() == INSTRUCTION_TYPE.SPARK)
+			if ((inst.getType() == INSTRUCTION_TYPE.CONTROL_PROGRAM  || inst.getType() == INSTRUCTION_TYPE.SPARK || inst.getType() == INSTRUCTION_TYPE.FLINK)
 					&& ((CPInstruction)inst).getCPInstructionType() == CPINSTRUCTION_TYPE.Variable 
 					&& ((VariableCPInstruction)inst).isRemoveVariable(varName) ) {
 				deleteInst.remove(i);
@@ -2638,7 +2637,7 @@ public class Dag<N extends Lop>
 						String io_inst = node.getInstructions(
 							node.getInputs().get(0).getOutputParameters().getLabel(), 
 							fname.getOutputParameters().getLabel());
-						Instruction currInstr = (node.getExecType() == ExecType.SPARK) ?
+						Instruction currInstr = (node.getExecType() == ExecType.SPARK || node.getExecType() == ExecType.FLINK) ?
 							SPInstructionParser.parseSingleInstruction(io_inst) :
 							CPInstructionParser.parseSingleInstruction(io_inst);
 						currInstr.setLocation((!node.getInputs().isEmpty() 

@@ -62,7 +62,12 @@ public class Statistics
 	private static final LongAdder numExecutedSPInst = new LongAdder();
 	private static final LongAdder numCompiledSPInst = new LongAdder();
 
-	//JVM stats (low frequency updates)
+	// number of compiled/executed SP instructions
+	private static final LongAdder numExecutedFLInst = new LongAdder();
+	private static final LongAdder numCompiledFLInst = new LongAdder();
+
+
+	//JVM stats
 	private static long jitCompileTime = 0; //in milli sec
 	private static long jvmGCTime = 0; //in milli sec
 	private static long jvmGCCount = 0; //count
@@ -170,6 +175,22 @@ public class Statistics
 		return numCompiledSPInst.longValue();
 	}
 
+	public static long getNoOfExecutedFLInst() {
+		return numExecutedFLInst.longValue();
+	}
+
+	public static void incrementNoOfExecutedFLInst() {
+		numExecutedFLInst.increment();
+	}
+
+	public static void decrementNoOfExecutedFLInst() {
+		numExecutedFLInst.decrement();
+	}
+
+	public static long getNoOfCompiledFLInst() {
+		return numCompiledFLInst.longValue();
+	}
+
 	public static void incrementNoOfCompiledSPInst() {
 		numCompiledSPInst.increment();
 	}
@@ -212,7 +233,8 @@ public class Statistics
 		//reset both mr/sp for multiple tests within one jvm
 		numExecutedSPInst.reset();
 		numExecutedMRJobs.reset();
-		
+		numExecutedFLInst.reset();
+
 		if( DMLScript.USE_ACCELERATOR )
 			GPUStatistics.setNoOfExecutedGPUInst(0);
 	}
@@ -733,6 +755,11 @@ public class Statistics
 			if( DMLScript.STATISTICS ) //moved into stats on Shiv's request
 				sb.append("Number of compiled Spark inst:\t" + getNoOfCompiledSPInst() + ".\n");
 			sb.append("Number of executed Spark inst:\t" + getNoOfExecutedSPInst() + ".\n");
+		}
+		else if ( OptimizerUtils.isFlinkExecutionMode() ) {
+			if( DMLScript.STATISTICS ) //moved into stats on Shiv's request
+				sb.append("Number of compiled Flink inst:\t" + getNoOfCompiledFLInst() + ".\n");
+			sb.append("Number of executed Flink inst:\t" + getNoOfExecutedFLInst() + ".\n");
 		}
 		else {
 			if( DMLScript.STATISTICS ) //moved into stats on Shiv's request

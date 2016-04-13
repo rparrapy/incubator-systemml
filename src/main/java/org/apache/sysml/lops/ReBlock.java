@@ -60,6 +60,8 @@ public class ReBlock extends Lop
 			lps.setProperties( inputs, ExecType.MR, ExecLocation.MapAndReduce, breaksAlignment, aligner, definesMRJob );
 		else if(et == ExecType.SPARK) 
 			lps.setProperties( inputs, ExecType.SPARK, ExecLocation.ControlProgram, breaksAlignment, aligner, definesMRJob );
+		else if(et == ExecType.FLINK)
+			lps.setProperties( inputs, ExecType.FLINK, ExecLocation.ControlProgram, breaksAlignment, aligner, definesMRJob ); 
 		else 
 			throw new LopsException("Incorrect execution type for Reblock:" + et);
 	}

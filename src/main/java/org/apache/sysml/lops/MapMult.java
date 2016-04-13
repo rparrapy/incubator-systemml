@@ -108,7 +108,7 @@ public class MapMult extends Lop
 	 * @param aggtype spark aggregation type
 	 * @throws LopsException if LopsException occurs
 	 */
-	public MapMult(Lop input1, Lop input2, DataType dt, ValueType vt, boolean rightCache, boolean partitioned, boolean emptyBlocks, SparkAggType aggtype) 
+	public MapMult(Lop input1, Lop input2, DataType dt, ValueType vt, boolean rightCache, boolean partitioned, boolean emptyBlocks, SparkAggType aggtype, ExecType t) 
 		throws LopsException 
 	{
 		super(Lop.Type.MapMult, dt, vt);		
@@ -130,7 +130,7 @@ public class MapMult extends Lop
 		boolean aligner = false;
 		boolean definesMRJob = false;
 		lps.addCompatibility(JobType.INVALID);
-		lps.setProperties( inputs, ExecType.SPARK, ExecLocation.ControlProgram, breaksAlignment, aligner, definesMRJob );
+		lps.setProperties( inputs, t, ExecLocation.ControlProgram, breaksAlignment, aligner, definesMRJob );
 	}
 
 	public String toString() {

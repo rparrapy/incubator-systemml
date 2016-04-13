@@ -39,6 +39,7 @@ import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
 import org.apache.sysml.runtime.instructions.gpu.context.GPUContextPool;
+import org.apache.sysml.runtime.controlprogram.parfor.opt.OptimizationWrapper;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 
 
@@ -296,7 +297,29 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 						setLops(unary1);
 					}
 				}
-			}
+			} else if (et == ExecType.FLINK) {
+				// TODO this is just copied from spark above -- eventually make flink-specific
+				OperationTypes op = HopsAgg2Lops.get(_op);
+				DirectionTypes dir = HopsDirection2Lops.get(_direction);
+
+				//unary aggregate default
+					boolean needAgg = requiresAggregation(input, _direction);
+					SparkAggType aggtype = getSparkUnaryAggregationType(needAgg);
+
+					PartialAggregate aggregate = new PartialAggregate(input.constructLops(),
+							HopsAgg2Lops.get(_op), HopsDirection2Lops.get(_direction), DataType.MATRIX, getValueType(), aggtype, et);
+					aggregate.setDimensionsBasedOnDirection(getDim1(), getDim2(), input.getRowsInBlock(), input.getColsInBlock());
+					setLineNumbers(aggregate);
+					setLops(aggregate);
+
+					if (getDataType() == DataType.SCALAR) {
+						UnaryCP unary1 = new UnaryCP(aggregate, HopsOpOp1LopsUS.get(OpOp1.CAST_AS_SCALAR),
+								getDataType(), getValueType());
+						unary1.getOutputParameters().setDimensions(0, 0, 0, 0, -1);
+						setLineNumbers(unary1);
+						setLops(unary1);
+					}
+				}
 		} 
 		catch (Exception e) {
 			throw new HopsException(this.printErrorLocation() + "In AggUnary Hop, error constructing Lops " , e);
@@ -437,7 +460,7 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 		
 		checkAndSetForcedPlatform();
 		
-		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
+		ExecType REMOTE = OptimizerUtils.getRemoteExecType();
 		
 		//forced / memory-based / threshold-based decision
 		if( _etypeForced != null ) 			
@@ -470,10 +493,11 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 			&& !(getInput().get(0) instanceof DataOp)  //input is not checkpoint
 			&& (getInput().get(0).getParent().size()==1 //uagg is only parent, or 
 			   || !requiresAggregation(getInput().get(0), _direction)) //w/o agg
-			&& getInput().get(0).optFindExecType() == ExecType.SPARK )					
+			&& (getInput().get(0).optFindExecType() == ExecType.SPARK
+			|| getInput().get(0).optFindExecType() == ExecType.FLINK))					
 		{
-			//pull unary aggregate into spark 
-			_etype = ExecType.SPARK;
+			//pull unary aggregate into spark/flink 
+			_etype = OptimizerUtils.getRemoteExecType();
 		}
 		
 		//mark for recompile (forever)

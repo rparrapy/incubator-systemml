@@ -19,6 +19,7 @@
 
 package org.apache.sysml.lops;
 
+import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.lops.LopProperties.ExecLocation;
 import org.apache.sysml.lops.LopProperties.ExecType;
 import org.apache.sysml.lops.compile.JobType;
@@ -60,6 +61,9 @@ public class CSVReBlock extends Lop
 		}
 		else if(et == ExecType.SPARK) {
 			this.lps.setProperties( inputs, ExecType.SPARK, ExecLocation.ControlProgram, breaksAlignment, aligner, definesMRJob );
+		}
+		else if(et == ExecType.FLINK) {
+			this.lps.setProperties( inputs, ExecType.FLINK, ExecLocation.ControlProgram, breaksAlignment, aligner, definesMRJob );
 		}
 		else {
 			throw new LopsException("Incorrect execution type for CSVReblock:" + et);

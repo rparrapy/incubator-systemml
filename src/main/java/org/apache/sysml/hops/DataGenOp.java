@@ -177,7 +177,7 @@ public class DataGenOp extends Hop implements MultiThreadedHop
 				(getRowsInBlock()>0)?getRowsInBlock():ConfigurationManager.getBlocksize(), 
 				(getColsInBlock()>0)?getColsInBlock():ConfigurationManager.getBlocksize(),  
 				//actual rand nnz might differ (in cp/mr they are corrected after execution)
-				(_op==DataGenMethod.RAND && et==ExecType.SPARK && getNnz()!=0) ? -1 : getNnz(),
+				(_op==DataGenMethod.RAND && (et==ExecType.SPARK || et == ExecType.FLINK) && getNnz()!=0) ? -1 : getNnz(),
 				getUpdateType());
 		
 		setLineNumbers(rnd);
@@ -274,7 +274,7 @@ public class DataGenOp extends Hop implements MultiThreadedHop
 		
 		checkAndSetForcedPlatform();
 
-		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
+		ExecType REMOTE = OptimizerUtils.getRemoteExecType();
 		
 		if( _etypeForced != null ) 			
 			_etype = _etypeForced;
