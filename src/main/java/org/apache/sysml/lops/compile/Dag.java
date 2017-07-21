@@ -2633,13 +2633,20 @@ public class Dag<N extends Lop>
 					else { //CP PERSISTENT WRITE
 						// generate a write instruction that writes matrix to HDFS
 						Lop fname = ((Data)node).getNamedInputLop(DataExpression.IO_FILENAME);
-						
+						Instruction currInstr = null;
+
 						String io_inst = node.getInstructions(
 							node.getInputs().get(0).getOutputParameters().getLabel(), 
 							fname.getOutputParameters().getLabel());
-						Instruction currInstr = (node.getExecType() == ExecType.SPARK || node.getExecType() == ExecType.FLINK) ?
-							SPInstructionParser.parseSingleInstruction(io_inst) :
-							CPInstructionParser.parseSingleInstruction(io_inst);
+						if(node.getExecType() == ExecType.SPARK)
+							// This will throw an exception if the exectype of hop is set incorrectly
+							// Note: the exec type and exec location of lops needs to be set to SPARK and ControlProgram respectively
+							currInstr = SPInstructionParser.parseSingleInstruction(io_inst);
+						else if(node.getExecType() == ExecType.FLINK) {
+							currInstr = FLInstructionParser.parseSingleInstruction(io_inst);
+						}
+						else
+							currInstr = CPInstructionParser.parseSingleInstruction(io_inst);
 						currInstr.setLocation((!node.getInputs().isEmpty() 
 							&& node.getInputs().get(0)._beginLine != 0) ? node.getInputs().get(0) : node);
 						
