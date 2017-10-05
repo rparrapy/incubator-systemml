@@ -60,8 +60,13 @@ public class CostEstimatorRuntime extends CostEstimator
 			return _costMem.getLeafNodeEstimate(measure, node);
 		
 		//redirect to exec-type-specific estimate
-		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
-		return getLeafNodeEstimate(measure, node, node.isCPOnly() ? ExecType.CP : REMOTE);
+		ExecType remote = ExecType.MR;
+		if (OptimizerUtils.isSparkExecutionMode()) {
+			remote = ExecType.SPARK;
+		} else if (OptimizerUtils.isFlinkExecutionMode()) {
+			remote = ExecType.FLINK;
+		}
+		return getLeafNodeEstimate(measure, node, node.isCPOnly() ? ExecType.CP : remote);
 	}
 	
 	@Override

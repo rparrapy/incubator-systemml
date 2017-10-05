@@ -275,6 +275,9 @@ public class OptimizerConstrained extends OptimizerRuleBased
 			else if (n.getExecType() == ExecType.SPARK) {
 				mode = PExecMode.REMOTE_SPARK;
 			}
+			else if (n.getExecType() == ExecType.FLINK) {
+				mode = PExecMode.REMOTE_FLINK;
+			}
 
 			pfpb.setExecMode( mode );
 			LOG.debug(getOptMode()+" OPT: forced 'set execution strategy' - result="+mode );

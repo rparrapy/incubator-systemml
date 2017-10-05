@@ -300,7 +300,7 @@ public class CPInstructionParser extends InstructionParser
 		
 		if ( str == null || str.isEmpty() ) 
 			return null;
-		
+
 		switch(cptype) 
 		{
 			case AggregateUnary:

@@ -63,6 +63,7 @@ import org.apache.sysml.runtime.instructions.MRJobInstruction;
 import org.apache.sysml.runtime.instructions.cp.FunctionCallCPInstruction;
 import org.apache.sysml.runtime.instructions.cpfile.MatrixIndexingCPFileInstruction;
 import org.apache.sysml.runtime.instructions.cpfile.ParameterizedBuiltinCPFileInstruction;
+import org.apache.sysml.runtime.instructions.flink.FLInstruction;
 import org.apache.sysml.runtime.instructions.spark.SPInstruction;
 
 /**
@@ -215,7 +216,12 @@ public class OptTreeConverter
 				case REMOTE_SPARK:
 				case REMOTE_SPARK_DP:
 					node.setExecType(ExecType.SPARK);
-					break;	
+					break;
+				case REMOTE_FLINK:
+				case REMOTE_FLINK_DP:
+					node.setExecType(ExecType.FLINK);
+					break;
+
 				default:
 					node.setExecType(null);
 			}
@@ -421,7 +427,11 @@ public class OptTreeConverter
 				case REMOTE_SPARK:
 				case REMOTE_SPARK_DP:
 					node.setExecType(ExecType.SPARK);
-					break;		
+					break;
+				case REMOTE_FLINK:
+				case REMOTE_FLINK_DP:
+					node.setExecType(ExecType.FLINK);
+					break;
 				case UNSPECIFIED:
 					node.setExecType(null);
 			}
@@ -467,9 +477,11 @@ public class OptTreeConverter
 			
 			//TODO remove this workaround once this information can be obtained from hops/lops compiler
 			if( node.isCPOnly() ) {
-				if( containsMRJobInstruction(pb, false, false) )
+				if( containsMRJobInstruction(pb, false, false, false) )
 					node.setExecType(ExecType.MR);
-				else if(containsMRJobInstruction(pb, false, true))
+				else if(containsMRJobInstruction(pb, false, true, false))
+					node.setExecType(ExecType.SPARK);
+				else if(containsMRJobInstruction(pb, false, false, true))
 					node.setExecType(ExecType.SPARK);
 			}
 		}
@@ -520,6 +532,8 @@ public class OptTreeConverter
 					node.setExecType(ExecType.CP); break;
 				case SPARK:
 					node.setExecType(ExecType.SPARK); break;
+				case FLINK:
+					node.setExecType(ExecType.FLINK); break;
 				case MR:
 					node.setExecType(ExecType.MR); break;
 				default:
@@ -595,7 +609,7 @@ public class OptTreeConverter
 		if (pb instanceof WhileProgramBlock)
 		{
 			WhileProgramBlock tmp = (WhileProgramBlock)pb;
-			ret = containsMRJobInstruction(tmp.getPredicate(), true, true);
+			ret = containsMRJobInstruction(tmp.getPredicate(), true, true, true);
 			if( ret ) return ret;
 			for (ProgramBlock pb2 : tmp.getChildBlocks()) {
 				ret = rContainsMRJobInstruction(pb2, inclFunctions);
@@ -605,7 +619,7 @@ public class OptTreeConverter
 		else if (pb instanceof IfProgramBlock)
 		{
 			IfProgramBlock tmp = (IfProgramBlock)pb;	
-			ret = containsMRJobInstruction(tmp.getPredicate(), true, true);
+			ret = containsMRJobInstruction(tmp.getPredicate(), true, true, true);
 			if( ret ) return ret;
 			for( ProgramBlock pb2 : tmp.getChildBlocksIfBody() ){
 				ret = rContainsMRJobInstruction(pb2, inclFunctions);
@@ -619,9 +633,9 @@ public class OptTreeConverter
 		else if (pb instanceof ForProgramBlock) //includes ParFORProgramBlock
 		{ 
 			ForProgramBlock tmp = (ForProgramBlock)pb;	
-			ret = containsMRJobInstruction(tmp.getFromInstructions(), true, true);
-			ret |= containsMRJobInstruction(tmp.getToInstructions(), true, true);
-			ret |= containsMRJobInstruction(tmp.getIncrementInstructions(), true, true);
+			ret = containsMRJobInstruction(tmp.getFromInstructions(), true, true, true);
+			ret |= containsMRJobInstruction(tmp.getToInstructions(), true, true, true);
+			ret |= containsMRJobInstruction(tmp.getIncrementInstructions(), true, true, true);
 			if( ret ) return ret;
 			for( ProgramBlock pb2 : tmp.getChildBlocks() ){
 				ret = rContainsMRJobInstruction(pb2, inclFunctions);
@@ -634,25 +648,26 @@ public class OptTreeConverter
 		}
 		else 
 		{
-			ret =   containsMRJobInstruction(pb, true, true)
+			ret =   containsMRJobInstruction(pb, true, true, true)
 			      | (inclFunctions && containsFunctionCallInstruction(pb));
 		}
 
 		return ret;
 	}
 
-	public static boolean containsMRJobInstruction( ProgramBlock pb, boolean inclCPFile, boolean inclSpark )
+	public static boolean containsMRJobInstruction( ProgramBlock pb, boolean inclCPFile, boolean inclSpark, boolean inclFlink )
 	{
-		return containsMRJobInstruction(pb.getInstructions(), inclCPFile, inclSpark);
+		return containsMRJobInstruction(pb.getInstructions(), inclCPFile, inclSpark, inclFlink);
 	}
 
-	public static boolean containsMRJobInstruction( ArrayList<Instruction> instSet, boolean inclCPFile, boolean inclSpark )
+	public static boolean containsMRJobInstruction( ArrayList<Instruction> instSet, boolean inclCPFile, boolean inclSpark, boolean inclFlink )
 	{
 		boolean ret = false;
 		if( instSet!=null )
 			for( Instruction inst : instSet )
 				if(    inst instanceof MRJobInstruction
-					|| (inclSpark && inst instanceof SPInstruction)	
+						|| (inclSpark && inst instanceof SPInstruction)
+						|| (inclFlink && inst instanceof FLInstruction)
 					|| (inclCPFile && (inst instanceof MatrixIndexingCPFileInstruction || inst instanceof ParameterizedBuiltinCPFileInstruction)))
 				{
 					ret = true;

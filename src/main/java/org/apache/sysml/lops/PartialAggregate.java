@@ -292,13 +292,10 @@ public class PartialAggregate extends Lop
 		
 		sb.append( OPERAND_DELIMITOR );
 		sb.append( getInputs().get(0).prepInputOperand(input1) );
-		
-		//in case of spark, we also compile the optional aggregate flag into the instruction.
-		if( getExecType() == ExecType.SPARK ) {
-			sb.append( OPERAND_DELIMITOR );
-			sb.append( _aggtype );	
-		}
-		
+
+		sb.append( OPERAND_DELIMITOR );
+		sb.append( prepOutputOperand(output) );
+
 		//exec-type specific attributes
 		sb.append( OPERAND_DELIMITOR );
 		if( getExecType() == ExecType.SPARK || getExecType() == ExecType.FLINK)

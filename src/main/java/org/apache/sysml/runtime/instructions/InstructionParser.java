@@ -35,7 +35,9 @@ public class InstructionParser
 	{	
 		if ( str == null || str.isEmpty() )
 			return null;
-		
+		System.out.println("Parsing instruction: " + str);
+
+
 		String execType = str.split(Instruction.OPERAND_DELIM)[0]; 
 		if (   execType.equalsIgnoreCase(ExecType.CP.toString()) 
 			|| execType.equalsIgnoreCase(ExecType.CP_FILE.toString()) ) 
@@ -55,6 +57,8 @@ public class InstructionParser
 		else if ( execType.equalsIgnoreCase(ExecType.FLINK.toString()) )
 		{
 			FLINSTRUCTION_TYPE fltype = InstructionUtils.getFLType(str);
+			if( fltype == null )
+				throw new DMLRuntimeException("Unknown FLINK instruction: " + str);
 			return FLInstructionParser.parseSingleInstruction(fltype, str);
 		}
 		else if ( execType.equalsIgnoreCase(ExecType.GPU.toString()) ) 

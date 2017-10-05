@@ -24,6 +24,7 @@ import java.io.IOException;
 
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapred.FileOutputCommitter;
 import org.apache.hadoop.mapred.FileOutputFormat;
@@ -31,6 +32,7 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.JobContext;
 import org.apache.hadoop.mapred.TaskAttemptContext;
 import org.apache.hadoop.mapred.TaskAttemptID;
+import org.apache.sysml.runtime.io.IOUtilFunctions;
 import org.apache.sysml.runtime.matrix.mapred.MRJobConfiguration;
 
 
@@ -75,6 +77,7 @@ public class MultipleOutputCommitter extends FileOutputCommitter
 	public void commitTask(TaskAttemptContext context) 
 		throws IOException 
 	{
+		System.out.printf("imprimi lcdth");
 		JobConf conf = context.getJobConf();
 		TaskAttemptID attemptId = context.getTaskAttemptID();
 		
@@ -83,7 +86,10 @@ public class MultipleOutputCommitter extends FileOutputCommitter
 		
 		// get temp task output path (compatible with hadoop1 and hadoop2)
 		Path taskOutPath = FileOutputFormat.getWorkOutputPath(conf);
+		LOG.info("Task output path:" + taskOutPath.toString());
 		FileSystem fs = taskOutPath.getFileSystem(conf);
+		//FileSystem fs = IOUtilFunctions.getFileSystem(taskOutPath);
+
 		if( !fs.exists(taskOutPath) )
 			throw new IOException("Task output path "+ taskOutPath.toString() + "does not exist.");
 		
@@ -119,13 +125,20 @@ public class MultipleOutputCommitter extends FileOutputCommitter
 		String name =  file.getName(); //e.g., 0-r-00000 
 		int index = Integer.parseInt(name.substring(0, name.indexOf("-")));
 		Path dest = new Path(outputs[index], name); //e.g., outX/0-r-00000
+		LOG.error("Destination output path:" + dest);
+
+		FileSystem destFs = IOUtilFunctions.getFileSystem(dest);
+
+		if (!FileUtil.copy(fs, file, destFs, dest, true, true, context.getJobConf())) {
+			throw new IOException("Failed to save output " + dest + " for rename of " + file + " in task: " + attemptId);
+		}
 		
 		// move file from 'file' to 'finalPath'
-		if( !fs.rename(file, dest) ) {
-			if (!fs.delete(dest, true))
-				throw new IOException("Failed to delete earlier output " + dest + " for rename of " + file + " in task " + attemptId);
-			if (!fs.rename(file, dest)) 
-				throw new IOException("Failed to save output " + dest + " for rename of " + file + " in task: " + attemptId);
-		}
+//		if( !fs.rename(file, dest) ) {
+//			if (!fs.delete(dest, true))
+//				throw new IOException("Failed to delete earlier output " + dest + " for rename of " + file + " in task " + attemptId);
+//			if (!fs.rename(file, dest))
+//				throw new IOException("Failed to save output " + dest + " for rename of " + file + " in task: " + attemptId);
+//		}
 	}
 }

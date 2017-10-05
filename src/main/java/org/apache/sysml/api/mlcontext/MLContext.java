@@ -175,22 +175,26 @@ public class MLContext {
 	 *
 	 */
 	public enum ExecutionType {
-		DRIVER, SPARK, HADOOP, DRIVER_AND_SPARK, DRIVER_AND_HADOOP;
+		DRIVER, SPARK, FLINK, HADOOP, DRIVER_AND_SPARK, DRIVER_AND_HADOOP, DRIVER_AND_FLINK;
 
 		public DMLScript.RUNTIME_PLATFORM getRuntimePlatform() {
 			switch (this) {
-			case DRIVER:
-				return DMLScript.RUNTIME_PLATFORM.SINGLE_NODE;
-			case SPARK:
-				return DMLScript.RUNTIME_PLATFORM.SPARK;
-			case HADOOP:
-				return DMLScript.RUNTIME_PLATFORM.HADOOP;
-			case DRIVER_AND_SPARK:
-				return DMLScript.RUNTIME_PLATFORM.HYBRID_SPARK;
-			case DRIVER_AND_HADOOP:
-				return DMLScript.RUNTIME_PLATFORM.HYBRID;
-			default:
-				return DMLScript.RUNTIME_PLATFORM.HYBRID_SPARK;
+                case DRIVER:
+                    return DMLScript.RUNTIME_PLATFORM.SINGLE_NODE;
+                case SPARK:
+                    return DMLScript.RUNTIME_PLATFORM.SPARK;
+                case FLINK:
+                    return DMLScript.RUNTIME_PLATFORM.FLINK;
+                case HADOOP:
+                    return DMLScript.RUNTIME_PLATFORM.HADOOP;
+                case DRIVER_AND_SPARK:
+                    return DMLScript.RUNTIME_PLATFORM.HYBRID_SPARK;
+                case DRIVER_AND_FLINK:
+                    return DMLScript.RUNTIME_PLATFORM.HYBRID_FLINK;
+                case DRIVER_AND_HADOOP:
+                    return DMLScript.RUNTIME_PLATFORM.HYBRID;
+                default:
+                    return DMLScript.RUNTIME_PLATFORM.HYBRID_SPARK;
 			}
 		}
 	}
@@ -286,8 +290,8 @@ public class MLContext {
 	public void resetConfig() {
 		MLContextUtil.setDefaultConfig();
 	}
-	
-	
+
+
 
 	/**
 	 * Set configuration property, such as
@@ -306,8 +310,8 @@ public class MLContext {
 			throw new MLContextException(e);
 		}
 	}
-	
-	
+
+
 	/**
 	 * Execute a DML or PYDML Script.
 	 *
@@ -359,10 +363,10 @@ public class MLContext {
 			throw new MLContextException("Exception when executing script", e);
 		}
 	}
-	
+
 	/**
 	 * Sets the script that is being executed
-	 * 
+	 *
 	 * @param executionScript
 	 *            script that is being executed
 	 */
@@ -508,7 +512,7 @@ public class MLContext {
 	public boolean isForceGPU() {
 		return this.forceGPU;
 	}
-	
+
 	/**
 	 * Used internally by MLContextProxy.
 	 *
@@ -757,7 +761,7 @@ public class MLContext {
 
 	/**
 	 * Obtain the current execution environment.
-	 * 
+	 *
 	 * @return the execution environment
 	 */
 	public ExecutionType getExecutionType() {
@@ -766,7 +770,7 @@ public class MLContext {
 
 	/**
 	 * Set the execution environment.
-	 * 
+	 *
 	 * @param executionType
 	 *            the execution environment
 	 */

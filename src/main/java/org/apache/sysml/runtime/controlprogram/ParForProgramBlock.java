@@ -54,33 +54,7 @@ import org.apache.sysml.runtime.controlprogram.caching.CacheException;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
-import org.apache.sysml.runtime.controlprogram.parfor.DataPartitioner;
-import org.apache.sysml.runtime.controlprogram.parfor.DataPartitionerLocal;
-import org.apache.sysml.runtime.controlprogram.parfor.DataPartitionerRemoteMR;
-import org.apache.sysml.runtime.controlprogram.parfor.DataPartitionerRemoteSpark;
-import org.apache.sysml.runtime.controlprogram.parfor.LocalParWorker;
-import org.apache.sysml.runtime.controlprogram.parfor.LocalTaskQueue;
-import org.apache.sysml.runtime.controlprogram.parfor.ParForBody;
-import org.apache.sysml.runtime.controlprogram.parfor.ProgramConverter;
-import org.apache.sysml.runtime.controlprogram.parfor.RemoteDPParForMR;
-import org.apache.sysml.runtime.controlprogram.parfor.RemoteDPParForSpark;
-import org.apache.sysml.runtime.controlprogram.parfor.RemoteParForJobReturn;
-import org.apache.sysml.runtime.controlprogram.parfor.RemoteParForMR;
-import org.apache.sysml.runtime.controlprogram.parfor.RemoteParForSpark;
-import org.apache.sysml.runtime.controlprogram.parfor.ResultMerge;
-import org.apache.sysml.runtime.controlprogram.parfor.ResultMergeLocalAutomatic;
-import org.apache.sysml.runtime.controlprogram.parfor.ResultMergeLocalFile;
-import org.apache.sysml.runtime.controlprogram.parfor.ResultMergeLocalMemory;
-import org.apache.sysml.runtime.controlprogram.parfor.ResultMergeRemoteMR;
-import org.apache.sysml.runtime.controlprogram.parfor.ResultMergeRemoteSpark;
-import org.apache.sysml.runtime.controlprogram.parfor.Task;
-import org.apache.sysml.runtime.controlprogram.parfor.TaskPartitioner;
-import org.apache.sysml.runtime.controlprogram.parfor.TaskPartitionerFactoring;
-import org.apache.sysml.runtime.controlprogram.parfor.TaskPartitionerFactoringCmax;
-import org.apache.sysml.runtime.controlprogram.parfor.TaskPartitionerFactoringCmin;
-import org.apache.sysml.runtime.controlprogram.parfor.TaskPartitionerFixedsize;
-import org.apache.sysml.runtime.controlprogram.parfor.TaskPartitionerNaive;
-import org.apache.sysml.runtime.controlprogram.parfor.TaskPartitionerStatic;
+import org.apache.sysml.runtime.controlprogram.parfor.*;
 import org.apache.sysml.runtime.controlprogram.parfor.mqo.RuntimePiggybacking;
 import org.apache.sysml.runtime.controlprogram.parfor.opt.CostEstimator;
 import org.apache.sysml.runtime.controlprogram.parfor.opt.CostEstimator.TestMeasure;
@@ -130,6 +104,8 @@ public class ParForProgramBlock extends ForProgramBlock
 		REMOTE_MR_DP,	//remote (MR cluster) execution mode, fused with data partitioning
 		REMOTE_SPARK,	//remote (Spark cluster) execution mode
 		REMOTE_SPARK_DP,//remote (Spark cluster) execution mode, fused with data partitioning
+		REMOTE_FLINK,	//remote (Spark cluster) execution mode
+		REMOTE_FLINK_DP,//remote (Spark cluster) execution mode, fused with data partitioning
 		UNSPECIFIED
 	}
 
@@ -234,7 +210,8 @@ public class ParForProgramBlock extends ForProgramBlock
 		LOCAL,      // local file based partition split on master node
 		REMOTE_MR,  // remote partition split using a reblock MR job 
 		REMOTE_SPARK, // remote partition split using a spark job
-		UNSPECIFIED, 
+		REMOTE_FLINK, // remote partition split using a flink job
+		UNSPECIFIED,
   	}
 
 	public enum PResultMerge {
@@ -243,6 +220,7 @@ public class ParForProgramBlock extends ForProgramBlock
 		LOCAL_AUTOMATIC, // decides between MEM and FILE based on the size of the output matrix 
 		REMOTE_MR,       // remote MR parallel result merge
 		REMOTE_SPARK,    // remote Spark parallel result merge
+		REMOTE_FLINK,    // remote Flink parallel result merge
 		UNSPECIFIED,
 	}
 	
@@ -1075,6 +1053,69 @@ public class ParForProgramBlock extends ForProgramBlock
 			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_NUMITERS, numExecutedIterations);
 		}			
 	}
+
+	private void executeRemoteFlinkParFor(ExecutionContext ec, IntObject itervar, IntObject from, IntObject to, IntObject incr)
+			throws DMLRuntimeException
+	{
+		Timing time = ( _monitor ? new Timing(true) : null );
+
+		// Step 0) check and compile to CP (if forced remote parfor)
+		boolean flagForced = false;
+		if( FORCE_CP_ON_REMOTE_MR && (_optMode == POptMode.NONE || (_optMode == POptMode.CONSTRAINED && _execMode==PExecMode.REMOTE_FLINK)) )
+		{
+			//tid = 0  because replaced in remote parworker
+			flagForced = checkMRAndRecompileToCP(0);
+		}
+
+		// Step 1) init parallel workers (serialize PBs)
+		// NOTES: each mapper changes filenames with regard to his ID as we submit a single job,
+		//        cannot reuse serialized string, since variables are serialized as well.
+		ParForBody body = new ParForBody(_childBlocks, _resultVars, ec);
+		HashMap<String, byte[]> clsMap = new HashMap<String, byte[]>();
+		String program = ProgramConverter.serializeParForBody(body, clsMap);
+
+		if( _monitor )
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_INIT_PARWRK_T, time.stop());
+
+		// Step 2) create tasks
+		TaskPartitioner partitioner = createTaskPartitioner(from, to, incr);
+		long numIterations = partitioner.getNumIterations();
+
+		//sequentially create tasks as input to parfor job
+		List<Task> tasks = partitioner.createTasks();
+		long numCreatedTasks = tasks.size();
+
+		if( _monitor )
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_INIT_TASKS_T, time.stop());
+
+		//write matrices to HDFS
+		exportMatricesToHDFS(ec);
+
+		// Step 3) submit Spark parfor job (no lazy evaluation, since collect on result)
+		//MatrixObject colocatedDPMatrixObj = (_colocatedDPMatrix!=null)? (MatrixObject)ec.getVariable(_colocatedDPMatrix) : null;
+		RemoteParForJobReturn ret = RemoteParForSpark.runJob(_ID, program, clsMap, tasks, ec, _enableCPCaching, _numThreads);
+
+		if( _monitor )
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_WAIT_EXEC_T, time.stop());
+
+
+		// Step 4) collecting results from each parallel worker
+		int numExecutedTasks = ret.getNumExecutedTasks();
+		int numExecutedIterations = ret.getNumExecutedIterations();
+
+		//consolidate results into global symbol table
+		consolidateAndCheckResults( ec, numIterations, numCreatedTasks, numExecutedIterations , numExecutedTasks,
+				ret.getVariables() );
+		if( flagForced ) //see step 0
+			releaseForcedRecompile(0);
+
+		if( _monitor )
+		{
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_WAIT_RESULTS_T, time.stop());
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_NUMTASKS, numExecutedTasks);
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_NUMITERS, numExecutedIterations);
+		}
+	}
 	
 	private void executeRemoteSparkParForDP( ExecutionContext ec, IntObject itervar, IntObject from, IntObject to, IntObject incr ) 
 		throws DMLRuntimeException, IOException
@@ -1144,6 +1185,75 @@ public class ParForProgramBlock extends ForProgramBlock
 		}			
 	}
 
+	private void executeRemoteFlinkParForDP( ExecutionContext ec, IntObject itervar, IntObject from, IntObject to, IntObject incr )
+			throws DMLRuntimeException, IOException
+	{
+		Timing time = ( _monitor ? new Timing(true) : null );
+
+		// Step 0) check and compile to CP (if forced remote parfor)
+		boolean flagForced = checkMRAndRecompileToCP(0);
+
+		// Step 1) prepare partitioned input matrix (needs to happen before serializing the progam)
+		ParForStatementBlock sb = (ParForStatementBlock) getStatementBlock();
+		MatrixObject inputMatrix = ec.getMatrixObject(_colocatedDPMatrix );
+		PartitionFormat inputDPF = sb.determineDataPartitionFormat( _colocatedDPMatrix );
+		inputMatrix.setPartitioned(inputDPF._dpf, inputDPF._N); //mark matrix var as partitioned
+
+		// Step 2) init parallel workers (serialize PBs)
+		// NOTES: each mapper changes filenames with regard to his ID as we submit a single job,
+		//        cannot reuse serialized string, since variables are serialized as well.
+		ParForBody body = new ParForBody( _childBlocks, _resultVars, ec );
+		HashMap<String, byte[]> clsMap = new HashMap<String, byte[]>();
+		String program = ProgramConverter.serializeParForBody( body, clsMap );
+
+		if( _monitor )
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_INIT_PARWRK_T, time.stop());
+
+		// Step 3) create tasks
+		TaskPartitioner partitioner = createTaskPartitioner(from, to, incr);
+		String resultFile = constructResultFileName();
+		long numIterations = partitioner.getNumIterations();
+		long numCreatedTasks = numIterations;//partitioner.createTasks().size();
+
+		if( _monitor )
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_INIT_TASKS_T, time.stop());
+
+		//write matrices to HDFS, except DP matrix which is the input to the RemoteDPParForSpark job
+		exportMatricesToHDFS(ec, _colocatedDPMatrix);
+
+		// Step 4) submit MR job (wait for finished work)
+		//TODO runtime support for binary cell partitioning
+		//OutputInfo inputOI = ((inputMatrix.getSparsity()<0.1 && inputDPF==PDataPartitionFormat.COLUMN_WISE)||
+		//		              (inputMatrix.getSparsity()<0.001 && inputDPF==PDataPartitionFormat.ROW_WISE))?
+		//		             OutputInfo.BinaryCellOutputInfo : OutputInfo.BinaryBlockOutputInfo;
+		OutputInfo inputOI = OutputInfo.BinaryBlockOutputInfo;
+		RemoteParForJobReturn ret = RemoteDPParForSpark.runJob(_ID, itervar.getName(), _colocatedDPMatrix, program, clsMap,
+				resultFile, inputMatrix, ec, inputDPF, inputOI, _tSparseCol, _enableCPCaching, _numThreads );
+
+		if( _monitor )
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_WAIT_EXEC_T, time.stop());
+
+		// Step 5) collecting results from each parallel worker
+		int numExecutedTasks = ret.getNumExecutedTasks();
+		int numExecutedIterations = ret.getNumExecutedIterations();
+
+		//consolidate results into global symbol table
+		consolidateAndCheckResults( ec, numIterations, numCreatedTasks, numExecutedIterations, numExecutedTasks,
+				ret.getVariables() );
+
+		if( flagForced ) //see step 0
+			releaseForcedRecompile(0);
+		inputMatrix.unsetPartitioned();
+
+		if( _monitor )
+		{
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_WAIT_RESULTS_T, time.stop());
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_NUMTASKS, numExecutedTasks);
+			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_NUMITERS, numExecutedIterations);
+		}
+	}
+
+
 	private void handleDataPartitioning( ExecutionContext ec ) 
 		throws DMLRuntimeException
 	{
@@ -1173,6 +1283,12 @@ public class ParForProgramBlock extends ForProgramBlock
 							LOG.warn("PARFOR ID = "+_ID+", Switching data partitioner from " + dataPartitioner + 
 									" to " + PDataPartitioner.REMOTE_SPARK.name()+" for blockwise-n partitioning.");
 							dataPartitioner = PDataPartitioner.REMOTE_SPARK;
+						}
+
+						if( dataPartitioner != PDataPartitioner.REMOTE_FLINK && dpf.isBlockwise() ) {
+							LOG.warn("PARFOR ID = "+_ID+", Switching data partitioner from " + dataPartitioner +
+									" to " + PDataPartitioner.REMOTE_FLINK.name()+" for blockwise-n partitioning.");
+							dataPartitioner = PDataPartitioner.REMOTE_FLINK;
 						}
 						
 						Timing ltime = new Timing(true);
@@ -1524,7 +1640,11 @@ public class ParForProgramBlock extends ForProgramBlock
 			case REMOTE_SPARK:
 				dp = new DataPartitionerRemoteSpark( dpf, ec, numRed,
 						_replicationDP, false );
-				break;	
+				break;
+			case REMOTE_FLINK:
+				dp = new DataPartitionerRemoteFlink( dpf, ec, numRed,
+						_replicationDP, false );
+				break;
 			default:
 				throw new DMLRuntimeException("Unknown data partitioner: '" +dataPartitioner.name()+"'.");
 		}
@@ -1790,7 +1910,8 @@ public class ParForProgramBlock extends ForProgramBlock
 		return (USE_PARALLEL_RESULT_MERGE_REMOTE 
 			    && _resultVars.size() > 1
 			    && ( _resultMerge == PResultMerge.REMOTE_MR
-			       ||_resultMerge == PResultMerge.REMOTE_SPARK) );
+			       ||_resultMerge == PResultMerge.REMOTE_SPARK
+				   ||_resultMerge == PResultMerge.REMOTE_FLINK) );
 	}
 
 	private void setParForProgramBlockIDs(int IDPrefix)

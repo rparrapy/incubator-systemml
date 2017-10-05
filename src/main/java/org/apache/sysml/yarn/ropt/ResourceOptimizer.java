@@ -457,7 +457,7 @@ public class ResourceOptimizer
 		if( PRUNING_SMALL ){
 			ArrayList<ProgramBlock> Bp = new ArrayList<ProgramBlock>();
 			for( ProgramBlock pb : B )
-				if( OptTreeConverter.containsMRJobInstruction(pb.getInstructions(), false, true) )
+				if( OptTreeConverter.containsMRJobInstruction(pb.getInstructions(), false, true, true) )
 					Bp.add( pb );
 			B = Bp;
 		}

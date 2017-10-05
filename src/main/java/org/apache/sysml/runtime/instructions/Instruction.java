@@ -183,6 +183,8 @@ public abstract class Instruction
 				scriptInfo = " [" + beginLine + ":" + beginCol + "-" + endLine + ":" + endCol + "]";
 			if( type == INSTRUCTION_TYPE.SPARK )
 				extendedOpcode = SP_INST_PREFIX + getOpcode() + scriptInfo;
+			else if( type == INSTRUCTION_TYPE.FLINK )
+				extendedOpcode = FL_INST_PREFIX + getOpcode() + scriptInfo;
 			else if( type == INSTRUCTION_TYPE.GPU )
 				extendedOpcode = GPU_INST_PREFIX + getOpcode() + scriptInfo;
 			else
@@ -192,6 +194,8 @@ public abstract class Instruction
 			// This ensures that there is no overhead if finegrained statistics is disabled
 			if( type == INSTRUCTION_TYPE.SPARK )
 				extendedOpcode = SP_INST_PREFIX + getOpcode();
+			else if( type == INSTRUCTION_TYPE.FLINK )
+				extendedOpcode = FL_INST_PREFIX + getOpcode();
 			else if( type == INSTRUCTION_TYPE.GPU )
 				extendedOpcode = GPU_INST_PREFIX + getOpcode();
 			else

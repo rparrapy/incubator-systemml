@@ -115,7 +115,7 @@ public class FlinkExecutionContext extends ExecutionContext {
 	}
 
 
-	private DataSet<?> getDataSetHandleForMatrixObject(MatrixObject mo, InputInfo inputInfo)
+	public DataSet<?> getDataSetHandleForMatrixObject(MatrixObject mo, InputInfo inputInfo)
 			throws DMLRuntimeException {
 
 		//FIXME this logic should be in matrix-object (see spark version of this method for more info)
@@ -237,6 +237,7 @@ public class FlinkExecutionContext extends ExecutionContext {
 
 		//recompute nnz
 		long nnz = DataSetAggregateUtils.computeNNZFromBlocks(ldataset);
+		System.out.println("Writing dataset to disk: " + path);
 
 		//save file is an action which also triggers nnz maintenance
 		IOUtils.saveAsHadoopFile(ldataset,

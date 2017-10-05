@@ -166,6 +166,26 @@ public class DataSetAggregateUtils {
 		}
 	}
 
+	/**
+	 * Single block aggregation over rdds with corrections for numerical stability.
+	 *
+	 * @param in matrix as {@code JavaRDD<MatrixBlock>}
+	 * @param aop aggregate operator
+	 * @return matrix block
+	 */
+	public static MatrixBlock aggStableSingle(DataSet<MatrixBlock> in, AggregateOperator aop ) throws DMLRuntimeException
+	{
+		//stable aggregate of all blocks with correction block per function instance
+
+		//reduce-all aggregate via fold instead of reduce to allow
+		//for update in-place w/o deep copy of left-hand-side blocks
+		try {
+			return in.reduce(new AggregateSingleBlockFunction(aop)).collect().get(0);
+		} catch (Exception e) {
+			throw new DMLRuntimeException("Could not collect final block of " + in);
+		}
+	}
+
 	public static DataSet<Tuple2<MatrixIndexes, MatrixBlock>> aggByKeyStable(
 			DataSet<Tuple2<MatrixIndexes, MatrixBlock>> in, final AggregateOperator aop) {
 		//stable sum of blocks per key, by passing correction blocks along with aggregates

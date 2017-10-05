@@ -19,13 +19,23 @@
 
 package org.apache.sysml.runtime.instructions.flink;
 
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.sysml.lops.BinaryM.VectorType;
+import org.apache.sysml.parser.Expression;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.controlprogram.context.FlinkExecutionContext;
 import org.apache.sysml.runtime.instructions.InstructionUtils;
 import org.apache.sysml.runtime.instructions.cp.CPOperand;
+import org.apache.sysml.runtime.instructions.cp.ScalarObject;
+import org.apache.sysml.runtime.instructions.flink.functions.*;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
+import org.apache.sysml.runtime.matrix.data.MatrixBlock;
+import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
+import org.apache.sysml.runtime.matrix.operators.BinaryOperator;
 import org.apache.sysml.runtime.matrix.operators.Operator;
+import org.apache.sysml.runtime.matrix.operators.ScalarOperator;
 
 /**
  * Abstract class for all binary Flink instructions.
@@ -49,6 +59,7 @@ public abstract class BinaryFLInstruction extends ComputationFLInstruction {
 	 * @return
 	 * @throws DMLRuntimeException
 	 */
+	// TODO can potentially be moved to InstructionUtils
 	protected static String parseBinaryInstruction(String instr, CPOperand in1, CPOperand in2, CPOperand out)
 			throws DMLRuntimeException {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(instr);
@@ -61,6 +72,114 @@ public abstract class BinaryFLInstruction extends ComputationFLInstruction {
 		out.split(parts[3]);
 
 		return opcode;
+	}
+
+	protected void processMatrixMatrixBinaryInstruction(ExecutionContext ec) throws DMLRuntimeException {
+		FlinkExecutionContext fec = (FlinkExecutionContext) ec;
+
+		checkMatrixMatrixBinaryCharacteristics(fec);
+
+		String dataSetVar1 = input1.getName();
+		String dataSetVar2 = input2.getName();
+		DataSet<Tuple2<MatrixIndexes, MatrixBlock>> in1 = fec.getBinaryBlockDataSetHandleForVariable(dataSetVar1);
+		DataSet<Tuple2<MatrixIndexes, MatrixBlock>> in2 = fec.getBinaryBlockDataSetHandleForVariable(dataSetVar2);
+		MatrixCharacteristics mc1 = fec.getMatrixCharacteristics(dataSetVar1);
+		MatrixCharacteristics mc2 = fec.getMatrixCharacteristics(dataSetVar1);
+
+		final BinaryOperator bop = (BinaryOperator) _optr;
+
+		//vector replication if required (mv or outer operations)
+		boolean rowvector = (mc2.getRows() == 1 && mc1.getRows() > 1);
+		long numRepLeft = getNumReplicas(mc1, mc2, true);
+		long numRepRight = getNumReplicas(mc1, mc2, false);
+
+		if (numRepLeft > 1) {
+			in1 = in1.flatMap(new ReplicateVectorFunction(false, numRepLeft));
+		}
+		if (numRepRight > 1) {
+			in2 = in2.flatMap(new ReplicateVectorFunction(rowvector, numRepRight));
+		}
+
+		// execute binary operation
+		DataSet<Tuple2<MatrixIndexes, MatrixBlock>> out = in1
+				.join(in2)
+				.where(0)
+				.equalTo(0)
+				.with(new MatrixMatrixBinaryOpFunction(bop));
+
+		// set output
+		updateBinaryOutputMatrixCharacteristics(fec);
+		fec.setDataSetHandleForVariable(output.getName(), out);
+		fec.addLineageDataSet(output.getName(), dataSetVar1);
+		fec.addLineageDataSet(output.getName(), dataSetVar2);
+	}
+
+	protected void processMatrixScalarBinaryInstruction(ExecutionContext ec) throws DMLRuntimeException {
+		FlinkExecutionContext fec = (FlinkExecutionContext) ec;
+
+		// get input dataset
+		String matrixVar = (input1.getDataType() == Expression.DataType.MATRIX) ? input1.getName() : input2.getName();
+		DataSet<Tuple2<MatrixIndexes, MatrixBlock>> in = fec.getBinaryBlockDataSetHandleForVariable(matrixVar);
+
+		CPOperand scalar = (input1.getDataType() == Expression.DataType.MATRIX) ? input2 : input1;
+		ScalarObject constant = ec.getScalarInput(scalar.getName(), scalar.getValueType(), scalar.isLiteral());
+		ScalarOperator sc_op = (ScalarOperator) _optr;
+		sc_op.setConstant(constant.getDoubleValue());
+
+		// apply scalar function element-wise
+		DataSet<Tuple2<MatrixIndexes, MatrixBlock>> out = in.map(new MatrixScalarFunction(sc_op));
+
+		// update the MatrixCharacteristics (important when number of 0 changes)
+		updateUnaryOutputMatrixCharacteristics(fec, matrixVar, output.getName());
+
+		// register variable for output
+		fec.setDataSetHandleForVariable(output.getName(), out);
+		fec.addLineageDataSet(output.getName(), matrixVar);
+	}
+
+
+	/**
+	 * @param ec
+	 * @param vtype
+	 * @throws DMLRuntimeException
+	 */
+	protected void processMatrixBVectorBinaryInstruction(ExecutionContext ec, VectorType vtype)
+			throws DMLRuntimeException
+	{
+		FlinkExecutionContext flec = (FlinkExecutionContext)ec;
+
+		//sanity check dimensions
+		checkMatrixMatrixBinaryCharacteristics(flec);
+
+		//get input DataSets
+		String datasetVar = input1.getName();
+		String bcastVar = input2.getName();
+		DataSet<Tuple2<MatrixIndexes,MatrixBlock>> in1 = flec.getBinaryBlockDataSetHandleForVariable( datasetVar );
+		DataSet<Tuple2<MatrixIndexes,MatrixBlock>> in2 = flec.getBinaryBlockDataSetHandleForVariable( bcastVar );
+		MatrixCharacteristics mc1 = flec.getMatrixCharacteristics(datasetVar);
+		MatrixCharacteristics mc2 = flec.getMatrixCharacteristics(bcastVar);
+
+		BinaryOperator bop = (BinaryOperator) _optr;
+		boolean isOuter = (mc1.getRows()>1 && mc1.getCols()==1 && mc2.getRows()==1 && mc2.getCols()>1);
+
+		//execute map binary operation
+		DataSet<Tuple2<MatrixIndexes,MatrixBlock>> out = null;
+		if( isOuter ) {
+			out = in1.flatMap(new OuterVectorBinaryOpFunction(bop)).withBroadcastSet(in2, "bcastVar");
+		}
+		else { //default
+			//note: we use mappartition in order to preserve partitioning information for
+			//binary mv operations where the keys are guaranteed not to change, the reason
+			//why we cannot use mapValues is the need for broadcast key lookups.
+			//alternative: out = in1.mapToPair(new MatrixVectorBinaryOpFunction(bop, in2, vtype));
+			out = in1.map(
+					new MatrixVectorBinaryOpPartitionFunction(bop, vtype)).withBroadcastSet(in2, "bcastVar");
+		}
+
+		//set output DataSet
+		updateBinaryOutputMatrixCharacteristics(flec);
+		flec.setDataSetHandleForVariable(output.getName(), out);
+		flec.addLineageDataSet(output.getName(), datasetVar);
 	}
 
 	/**
@@ -86,6 +205,7 @@ public abstract class BinaryFLInstruction extends ComputationFLInstruction {
 	 * @param ec
 	 * @throws DMLRuntimeException
 	 */
+	// TODO this method is identical to the one used in BinarySPInstruction and should be pushed somewhere else!
 	protected void checkMatrixMatrixBinaryCharacteristics(ExecutionContext ec)
 			throws DMLRuntimeException {
 		MatrixCharacteristics mc1 = ec.getMatrixCharacteristics(input1.getName());
@@ -115,21 +235,22 @@ public abstract class BinaryFLInstruction extends ComputationFLInstruction {
 
 
 	/**
+	 *
 	 * @param flec
 	 * @throws DMLRuntimeException
 	 */
 	protected void updateBinaryMMOutputMatrixCharacteristics(FlinkExecutionContext flec, boolean checkCommonDim)
-			throws DMLRuntimeException {
+			throws DMLRuntimeException
+	{
 		MatrixCharacteristics mc1 = flec.getMatrixCharacteristics(input1.getName());
 		MatrixCharacteristics mc2 = flec.getMatrixCharacteristics(input2.getName());
 		MatrixCharacteristics mcOut = flec.getMatrixCharacteristics(output.getName());
-		if (!mcOut.dimsKnown()) {
-			if (!mc1.dimsKnown() || !mc2.dimsKnown())
-				throw new DMLRuntimeException(
-						"The output dimensions are not specified and cannot be inferred from inputs.");
-			else if (mc1.getRowsPerBlock() != mc2.getRowsPerBlock() || mc1.getColsPerBlock() != mc2.getColsPerBlock())
+		if(!mcOut.dimsKnown()) {
+			if( !mc1.dimsKnown() || !mc2.dimsKnown() )
+				throw new DMLRuntimeException("The output dimensions are not specified and cannot be inferred from inputs.");
+			else if(mc1.getRowsPerBlock() != mc2.getRowsPerBlock() || mc1.getColsPerBlock() != mc2.getColsPerBlock())
 				throw new DMLRuntimeException("Incompatible block sizes for BinarySPInstruction.");
-			else if (checkCommonDim && mc1.getCols() != mc2.getRows())
+			else if(checkCommonDim && mc1.getCols() != mc2.getRows())
 				throw new DMLRuntimeException("Incompatible dimensions for BinarySPInstruction");
 			else {
 				mcOut.set(mc1.getRows(), mc2.getCols(), mc1.getRowsPerBlock(), mc1.getColsPerBlock());
@@ -143,6 +264,7 @@ public abstract class BinaryFLInstruction extends ComputationFLInstruction {
 	 * @param left
 	 * @return
 	 */
+	// TODO this is exactly the same as in BinarySPInstruction --> move to common point!
 	protected long getNumReplicas(MatrixCharacteristics mc1, MatrixCharacteristics mc2, boolean left) {
 		if (left) {
 			if (mc1.getCols() == 1) //outer

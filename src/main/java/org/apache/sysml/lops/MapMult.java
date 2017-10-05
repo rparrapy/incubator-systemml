@@ -168,7 +168,7 @@ public class MapMult extends Lop
 		sb.append(Lop.OPERAND_DELIMITOR);
 		sb.append(_outputEmptyBlocks);
 		
-		if( getExecType() == ExecType.SPARK ) {
+		if( getExecType() == ExecType.SPARK || getExecType() == ExecType.FLINK) {
 			sb.append(Lop.OPERAND_DELIMITOR);
 			sb.append(_aggtype.toString());
 		}

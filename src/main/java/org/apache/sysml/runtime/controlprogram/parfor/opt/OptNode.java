@@ -53,6 +53,7 @@ public class OptNode
 	public enum ExecType { 
 		CP,
 		MR,
+		FLINK,
 		SPARK;
 
 		public ParForProgramBlock.PExecMode toParForExecMode() {
@@ -60,6 +61,8 @@ public class OptNode
 				case CP: 	return ParForProgramBlock.PExecMode.LOCAL;
 				case MR: 	return ParForProgramBlock.PExecMode.REMOTE_MR;
 				case SPARK: return ParForProgramBlock.PExecMode.REMOTE_SPARK;
+				case FLINK: return ParForProgramBlock.PExecMode.REMOTE_FLINK;
+
 			}
 			
 			return null;

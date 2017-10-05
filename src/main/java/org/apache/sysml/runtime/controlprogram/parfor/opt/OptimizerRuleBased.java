@@ -401,7 +401,14 @@ public class OptimizerRuleBased extends Optimizer
 	}
 	
 	protected ExecType getRemoteExecType() {
-		return OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
+		ExecType remote = ExecType.MR;
+		if (OptimizerUtils.isSparkExecutionMode()) {
+			remote = ExecType.SPARK;
+		} else if (OptimizerUtils.isFlinkExecutionMode()) {
+			remote = ExecType.FLINK;
+		}
+
+		return remote;
 	}
 	
 	///////
@@ -915,7 +922,8 @@ public class OptimizerRuleBased extends Optimizer
 		{
 			Hop h = OptTreeConverter.getAbstractPlanMapping().getMappedHop( n.getID() );
 			if(    h.getForcedExecType()!=LopProperties.ExecType.MR  //e.g., -exec=hadoop
-				&& h.getForcedExecType()!=LopProperties.ExecType.SPARK) 
+				&& h.getForcedExecType()!=LopProperties.ExecType.SPARK
+					&& h.getForcedExecType()!=LopProperties.ExecType.FLINK)
 			{
 				double mem = _cost.getLeafNodeEstimate(TestMeasure.MEMORY_USAGE, n, LopProperties.ExecType.CP);
 				if( mem <= memBudget )
@@ -1092,7 +1100,7 @@ public class OptimizerRuleBased extends Optimizer
 		
 		if(((n.getExecType()==ExecType.MR && n.getParam(ParamType.DATA_PARTITIONER).equals(PDataPartitioner.REMOTE_MR.name()))
 		    || (n.getExecType()==ExecType.SPARK && n.getParam(ParamType.DATA_PARTITIONER).equals(PDataPartitioner.REMOTE_SPARK.name())))
-		    && n.hasNestedParallelism(false) 
+		    && n.hasNestedParallelism(false)
 		    && n.hasNestedPartitionReads(false) )		
 		{
 			apply = true;
@@ -1424,7 +1432,7 @@ public class OptimizerRuleBased extends Optimizer
 			setTaskPartitioner( pn, PTaskPartitioner.FACTORING_CMAX );
 		}
 		else if( ((pn.getExecType()==ExecType.MR && !jvmreuse) 
-			|| pn.getExecType()==ExecType.SPARK) && pn.hasOnlySimpleChilds() )
+			|| pn.getExecType()==ExecType.SPARK || pn.getExecType()==ExecType.FLINK) && pn.hasOnlySimpleChilds() )
 		{
 			//for simple body programs without loops, branches, or function calls, we don't
 			//expect much load imbalance and hence use static partitioning in order to
@@ -1514,7 +1522,7 @@ public class OptimizerRuleBased extends Optimizer
 		
 		// try to merge MR data partitioning and MR exec 
 		if( (pn.getExecType()==ExecType.MR && M < _rm2 //fits into remote memory of reducers
-			|| pn.getExecType()==ExecType.SPARK) //MR/SP EXEC and CP body
+			|| pn.getExecType()==ExecType.SPARK || pn.getExecType()==ExecType.FLINK) //MR/SP EXEC and CP body
 			&& partitioner!=null && partitioner.equals(REMOTE_DP.toString()) //MR/SP partitioning
 			&& partitionedMatrices.size()==1 ) //only one partitioned matrix
 		{

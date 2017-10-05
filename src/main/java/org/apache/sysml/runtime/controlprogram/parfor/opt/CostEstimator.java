@@ -30,116 +30,116 @@ import org.apache.sysml.runtime.controlprogram.parfor.opt.OptNode.ParamType;
 
 /**
  * Base class for all potential cost estimators
- * 
+ *
  * TODO account for shared read-only matrices when computing aggregated stats
- * 
+ *
  */
-public abstract class CostEstimator 
-{	
+public abstract class CostEstimator
+{
 	protected static final Log LOG = LogFactory.getLog(CostEstimator.class.getName());
-    	
+
 	//default parameters
 	public static final double DEFAULT_EST_PARALLELISM = 1.0; //default degree of parallelism: serial
 	public static final long   FACTOR_NUM_ITERATIONS   = 10; //default problem size
 	public static final double DEFAULT_TIME_ESTIMATE   = 5;  //default execution time: 5ms
-	public static final double DEFAULT_MEM_ESTIMATE_CP = 1024; //default memory consumption: 1KB 
-	public static final double DEFAULT_MEM_ESTIMATE_MR = 20*1024*1024; //default memory consumption: 20MB 
+	public static final double DEFAULT_MEM_ESTIMATE_CP = 1024; //default memory consumption: 1KB
+	public static final double DEFAULT_MEM_ESTIMATE_MR = 20*1024*1024; //default memory consumption: 20MB
 
 	public enum TestMeasure {
 		EXEC_TIME,
-		MEMORY_USAGE	
+		MEMORY_USAGE
 	}
-	
+
 	public enum DataFormat {
 		DENSE,
 		SPARSE
 	}
-	
+
 	protected boolean _inclCondPart = false;
-	
+
 	/**
 	 * Main leaf node estimation method - to be overwritten by specific cost estimators
-	 * 
+	 *
 	 * @param measure ?
 	 * @param node internal representation of a plan alternative for program blocks and instructions
 	 * @return estimate?
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public abstract double getLeafNodeEstimate( TestMeasure measure, OptNode node ) 
+	public abstract double getLeafNodeEstimate( TestMeasure measure, OptNode node )
 		throws DMLRuntimeException;
 
 	/**
 	 * Main leaf node estimation method - to be overwritten by specific cost estimators
-	 * 
+	 *
 	 * @param measure ?
 	 * @param node internal representation of a plan alternative for program blocks and instructions
-	 * @param et forced execution type for leaf node 
+	 * @param et forced execution type for leaf node
 	 * @return estimate?
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public abstract double getLeafNodeEstimate( TestMeasure measure, OptNode node, ExecType et ) 
+	public abstract double getLeafNodeEstimate( TestMeasure measure, OptNode node, ExecType et )
 		throws DMLRuntimeException;
-	
-	
+
+
 	/////////
 	//methods invariant to concrete estimator
 	///
-	
+
 	/**
 	 * Main estimation method.
-	 * 
+	 *
 	 * @param measure ?
 	 * @param node internal representation of a plan alternative for program blocks and instructions
 	 * @param inclCondPart including conditional partitioning
 	 * @return estimate?
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public double getEstimate( TestMeasure measure, OptNode node ) 
+	public double getEstimate( TestMeasure measure, OptNode node )
 		throws DMLRuntimeException
 	{
 		return getEstimate(measure, node, null);
 	}
-	
-	public double getEstimate( TestMeasure measure, OptNode node, boolean inclCondPart ) 
+
+	public double getEstimate( TestMeasure measure, OptNode node, boolean inclCondPart )
 		throws DMLRuntimeException
 	{
 		//temporarily change local flag and get estimate
 		boolean oldInclCondPart = _inclCondPart;
-		_inclCondPart = inclCondPart; 
+		_inclCondPart = inclCondPart;
 		double val = getEstimate(measure, node, null);
-		
+
 		//reset local flag and return
 		_inclCondPart = oldInclCondPart;
 		return val;
 	}
-	
+
 	/**
 	 * Main estimation method.
-	 * 
+	 *
 	 * @param measure estimate type (time or memory)
 	 * @param node plan opt tree node
 	 * @param et execution type
 	 * @return estimate
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public double getEstimate( TestMeasure measure, OptNode node, ExecType et ) 
+	public double getEstimate( TestMeasure measure, OptNode node, ExecType et )
 		throws DMLRuntimeException
 	{
 		double val = -1;
-		
+
 		if( node.isLeaf() )
 		{
 			if( _inclCondPart && node.getParam(ParamType.DATA_PARTITION_COND_MEM) != null )
 				val = Double.parseDouble(node.getParam(ParamType.DATA_PARTITION_COND_MEM));
 			else if( et != null )
 				val = getLeafNodeEstimate(measure, node, et); //forced type
-			else 
-				val = getLeafNodeEstimate(measure, node); //default	
+			else
+				val = getLeafNodeEstimate(measure, node); //default
 		}
 		else
 		{
 			//aggreagtion methods for different program block types and measure types
-			//TODO EXEC TIME requires reconsideration of for/parfor/if predicates 
+			//TODO EXEC TIME requires reconsideration of for/parfor/if predicates
 			//TODO MEMORY requires reconsideration of parfor -> potential overestimation, but safe
 			String tmp = null;
 			double N = -1;
@@ -149,34 +149,34 @@ public abstract class CostEstimator
 					switch( node.getNodeType() )
 					{
 						case GENERIC:
-						case FUNCCALL:	
-							val = getSumEstimate(measure, node.getChilds(), et); 
+						case FUNCCALL:
+							val = getSumEstimate(measure, node.getChilds(), et);
 							break;
 						case IF:
 							if( node.getChilds().size()==2 )
 								val = getWeightedEstimate(measure, node.getChilds(), et);
 							else
-								val = getMaxEstimate(measure, node.getChilds(), et); 
+								val = getMaxEstimate(measure, node.getChilds(), et);
 							break;
 						case WHILE:
-							val = FACTOR_NUM_ITERATIONS * getSumEstimate(measure, node.getChilds(), et); 
+							val = FACTOR_NUM_ITERATIONS * getSumEstimate(measure, node.getChilds(), et);
 							break;
 						case FOR:
 							tmp = node.getParam(ParamType.NUM_ITERATIONS);
-							N = (tmp!=null) ? (double)Long.parseLong(tmp) : FACTOR_NUM_ITERATIONS; 
+							N = (tmp!=null) ? (double)Long.parseLong(tmp) : FACTOR_NUM_ITERATIONS;
 							val = N * getSumEstimate(measure, node.getChilds(), et);
-							break; 
+							break;
 						case PARFOR:
 							tmp = node.getParam(ParamType.NUM_ITERATIONS);
-							N = (tmp!=null) ? (double)Long.parseLong(tmp) : FACTOR_NUM_ITERATIONS; 
-							val = N * getSumEstimate(measure, node.getChilds(), et) 
-									/ Math.max(node.getK(), 1); 
-							break;	
+							N = (tmp!=null) ? (double)Long.parseLong(tmp) : FACTOR_NUM_ITERATIONS;
+							val = N * getSumEstimate(measure, node.getChilds(), et)
+									/ Math.max(node.getK(), 1);
+							break;
 						default:
 							//do nothing
 					}
 					break;
-					
+
 				case MEMORY_USAGE:
 					switch( node.getNodeType() )
 					{
@@ -185,13 +185,13 @@ public abstract class CostEstimator
 						case IF:
 						case WHILE:
 						case FOR:
-							val = getMaxEstimate(measure, node.getChilds(), et); 
+							val = getMaxEstimate(measure, node.getChilds(), et);
 							break;
 						case PARFOR:
-							if( node.getExecType() == OptNode.ExecType.MR || node.getExecType() == OptNode.ExecType.SPARK )
+							if( node.getExecType() == OptNode.ExecType.MR || node.getExecType() == OptNode.ExecType.SPARK || node.getExecType() == OptNode.ExecType.FLINK)
 								val = getMaxEstimate(measure, node.getChilds(), et); //executed in different JVMs
 							else if ( node.getExecType() == OptNode.ExecType.CP || node.getExecType() == null )
-								val = getMaxEstimate(measure, node.getChilds(), et) 
+								val = getMaxEstimate(measure, node.getChilds(), et)
 									* Math.max(node.getK(), 1); //everything executed within 1 JVM
 							break;
 						default:
@@ -200,7 +200,7 @@ public abstract class CostEstimator
 					break;
 			}
 		}
-		
+
 		return val;
 	}
 
@@ -208,11 +208,11 @@ public abstract class CostEstimator
 		switch( measure ) {
 			case EXEC_TIME:    return DEFAULT_TIME_ESTIMATE;
 			case MEMORY_USAGE: return DEFAULT_MEM_ESTIMATE_CP;
-		}		
+		}
 		return -1;
 	}
 
-	protected double getMaxEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et ) 
+	protected double getMaxEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et )
 		throws DMLRuntimeException
 	{
 		double max = Double.MIN_VALUE; //smallest positive value
@@ -221,17 +221,17 @@ public abstract class CostEstimator
 		return max;
 	}
 
-	protected double getSumEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et ) 
+	protected double getSumEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et )
 		throws DMLRuntimeException
 	{
 		double sum = 0;
 		for( OptNode n : nodes )
 			sum += getEstimate( measure, n, et );
-		return sum;	
+		return sum;
 	}
 
-	protected double getWeightedEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et ) 
-		throws DMLRuntimeException 
+	protected double getWeightedEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et )
+		throws DMLRuntimeException
 	{
 		double ret = 0;
 		int len = nodes.size();

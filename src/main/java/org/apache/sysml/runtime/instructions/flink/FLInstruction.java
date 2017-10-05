@@ -30,8 +30,17 @@ import org.apache.sysml.utils.Statistics;
 public abstract class FLInstruction extends Instruction {
 
 	public enum FLINSTRUCTION_TYPE {
-		TSMM, MAPMM, Reblock, CSVReblock, Write, INVALID
+		TSMM, Reorg, Reblock, CSVReblock, Write, ArithmeticBinary, AggregateUnary, INVALID, MAPMM, MAPMMCHAIN, CPMM, //RMM, PMM, ZIPMM, PMAPMM, //matrix multiplication instructions
+		//        MatrixIndexing, RelationalBinary, AggregateUnary, AggregateTernary,
+//        Builtin, BuiltinUnary, BuiltinBinary,
+//        CentralMoment, Covariance, QSort, QPick,
+//        ParameterizedBuiltin, MAppend, RAppend, GAppend, GAlignedAppend,
+		Rand,
+//        MatrixReshape, Ternary, Quaternary, CumsumAggregate, CumsumOffset, BinUaggChain, UaggOuterChain,
+//
 	}
+
+	;
 
 	protected FLINSTRUCTION_TYPE _fltype;
 	protected Operator _optr;

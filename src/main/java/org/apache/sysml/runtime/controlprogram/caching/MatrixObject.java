@@ -581,6 +581,10 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 		throws IOException, DMLRuntimeException
 	{
 		long begin = 0;
+		System.out.println(" Writing matrix to HDFS...  " + getVarName() + "  Path: " + fname + ", Format: " +
+				(ofmt != null ? ofmt : "inferred from metadata"));
+		begin = System.currentTimeMillis();
+
 		if( LOG.isTraceEnabled() ){
 			LOG.trace (" Writing matrix to HDFS...  " + getVarName() + "  Path: " + fname + ", Format: " +
 						(ofmt != null ? ofmt : "inferred from metadata"));
@@ -610,6 +614,7 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 
 			if( LOG.isTraceEnabled() )
 				LOG.trace("Writing matrix to HDFS ("+fname+") - COMPLETED... " + (System.currentTimeMillis()-begin) + " msec.");
+			System.out.println("Writing matrix to HDFS ("+fname+") - COMPLETED... " + (System.currentTimeMillis()-begin) + " msec.");
 		}
 		else if( LOG.isTraceEnabled() ) {
 			LOG.trace ("Writing matrix to HDFS ("+fname+") - NOTHING TO WRITE (_data == null).");

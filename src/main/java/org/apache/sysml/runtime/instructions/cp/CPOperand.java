@@ -88,6 +88,7 @@ public class CPOperand
 
 	public void split(String str){
 		String[] opr = str.split(Instruction.VALUETYPE_PREFIX);
+
 		if ( opr.length == 4 ) {
 			_name = opr[0];
 			_dataType = DataType.valueOf(opr[1]);
